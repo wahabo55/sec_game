@@ -1,0 +1,748 @@
+// Game logic and functionality
+import { 
+    listenToGame, 
+    listenToPlayers, 
+    startQuiz, 
+    sendNextQuestion, 
+    submitAnswer as firebaseSubmitAnswer, 
+    updatePlayerScore, 
+    endGame, 
+    getLeaderboard 
+} from './firebase-config.js';
+import { questions, getTotalQuestions } from './questions.js';
+
+// Global game state
+let gameState = {
+    gameCode: localStorage.getItem('gameCode'),
+    userRole: localStorage.getItem('userRole'),
+    playerName: localStorage.getItem('playerName'),
+    playerEmoji: localStorage.getItem('playerEmoji') || '😊',
+    hostName: localStorage.getItem('hostName'),
+    currentQuestionIndex: 0,
+    playerScore: 0,
+    selectedAnswer: null,
+    questionStartTime: null,
+    gameUnsubscribe: null,
+    playersUnsubscribe: null,
+    timerInterval: null,
+    isWinner: false
+};
+
+// Sound effects (optional)
+const sounds = {
+    correct: null, // Will be replaced with actual sound files
+    incorrect: null,
+    timer: null
+};
+
+// Initialize the appropriate interface based on user role
+document.addEventListener('DOMContentLoaded', () => {
+    if (!gameState.gameCode) {
+        window.location.href = 'index.html';
+        return;
+    }
+
+    if (gameState.userRole === 'host') {
+        initHostInterface();
+    } else if (gameState.userRole === 'player') {
+        initPlayerInterface();
+    }
+});
+
+// Host Interface Functions
+function initHostInterface() {
+    // Update UI with game info
+    document.getElementById('game-code').textContent = gameState.gameCode;
+    document.getElementById('host-name').textContent = gameState.hostName;
+    
+    // Listen to game state changes
+    gameState.gameUnsubscribe = listenToGame(gameState.gameCode, handleGameStateChange);
+    
+    // Listen to players
+    gameState.playersUnsubscribe = listenToPlayers(gameState.gameCode, handlePlayersChange);
+    
+    // Set up global functions
+    setupHostGlobalFunctions();
+}
+
+function handleGameStateChange(snapshot) {
+    const game = snapshot.val();
+    if (!game) {
+        showNotification('لم يعد بإمكان العثور على المسابقة', 'error');
+        setTimeout(() => window.location.href = 'index.html', 2000);
+        return;
+    }
+    
+    updateGameStatus(game.status);
+    
+    if (game.status === 'active') {
+        showGameControls();
+        if (game.currentQuestion !== undefined) {
+            displayCurrentQuestion(game.currentQuestion);
+        }
+    }
+}
+
+function handlePlayersChange(snapshot) {
+    const players = snapshot.val();
+    const playerCount = players ? Object.keys(players).length : 0;
+    
+    document.getElementById('player-count').textContent = playerCount;
+    
+    // Enable/disable start button
+    const startBtn = document.getElementById('start-game-btn');
+    if (startBtn) {
+        startBtn.disabled = playerCount === 0;
+    }
+    
+    // Update players list
+    displayPlayersList(players);
+    
+    // Update answers summary if in active game
+    if (players && document.getElementById('answers-grid')) {
+        updateAnswersSummary(players);
+    }
+}
+
+function displayPlayersList(players) {
+    const playersContainer = document.getElementById('players-list');
+    
+    if (!players || Object.keys(players).length === 0) {
+        playersContainer.innerHTML = `
+            <div class="no-players">
+                <i class="fas fa-user-plus"></i>
+                <p>في انتظار انضمام المشاركين...</p>
+            </div>
+        `;
+        return;
+    }
+    
+    playersContainer.innerHTML = Object.values(players).map(player => `
+        <div class="player-card">
+            <div class="player-emoji">${player.emoji || '😊'}</div>
+            <div class="player-name">${player.name}</div>
+            <div class="player-score">${player.score || 0} نقطة</div>
+        </div>
+    `).join('');
+}
+
+function updateGameStatus(status) {
+    const statusElement = document.getElementById('game-status');
+    const statusMap = {
+        'waiting': 'في الانتظار',
+        'active': 'نشطة',
+        'finished': 'انتهت'
+    };
+    statusElement.textContent = statusMap[status] || status;
+}
+
+function showGameControls() {
+    document.getElementById('waiting-controls').classList.add('hidden');
+    document.getElementById('game-controls').classList.remove('hidden');
+    document.getElementById('total-questions').textContent = getTotalQuestions();
+}
+
+function displayCurrentQuestion(questionIndex) {
+    if (questionIndex >= questions.length) {
+        // Game finished
+        showResults();
+        return;
+    }
+    
+    const question = questions[questionIndex];
+    gameState.currentQuestionIndex = questionIndex;
+    
+    // Update question display
+    document.getElementById('current-question-number').textContent = questionIndex + 1;
+    document.getElementById('current-question-text').textContent = question.question;
+    
+    // Display choices
+    const choicesContainer = document.getElementById('choices-display');
+    choicesContainer.innerHTML = question.choices.map((choice, index) => `
+        <div class="choice-item" data-choice="${choice}">
+            ${String.fromCharCode(65 + index)}. ${choice}
+        </div>
+    `).join('');
+    
+    // Start question timer
+    startQuestionTimer(question.timeLimit || 20);
+    
+    // Clear previous answers
+    document.getElementById('answers-grid').innerHTML = '';
+    
+    // Enable next question button after timer
+    document.getElementById('next-question-btn').disabled = true;
+    setTimeout(() => {
+        document.getElementById('next-question-btn').disabled = false;
+    }, (question.timeLimit || 20) * 1000);
+}
+
+function startQuestionTimer(timeLimit) {
+    let timeLeft = timeLimit;
+    const timerElement = document.getElementById('timer');
+    
+    if (gameState.timerInterval) {
+        clearInterval(gameState.timerInterval);
+    }
+    
+    gameState.timerInterval = setInterval(() => {
+        timerElement.textContent = timeLeft;
+        
+        if (timeLeft <= 5) {
+            timerElement.style.color = '#dc3545';
+            timerElement.style.animation = 'pulse 0.5s infinite';
+        }
+        
+        if (timeLeft <= 0) {
+            clearInterval(gameState.timerInterval);
+            timerElement.style.animation = 'none';
+            timerElement.style.color = 'inherit';
+            
+            // Show correct answer
+            showCorrectAnswer();
+        }
+        
+        timeLeft--;
+    }, 1000);
+}
+
+function showCorrectAnswer() {
+    const question = questions[gameState.currentQuestionIndex];
+    const choices = document.querySelectorAll('.choice-item');
+    
+    choices.forEach(choice => {
+        if (choice.dataset.choice === question.answer) {
+            choice.classList.add('correct');
+        }
+    });
+}
+
+function updateAnswersSummary(players) {
+    const answersContainer = document.getElementById('answers-grid');
+    const currentQuestion = questions[gameState.currentQuestionIndex];
+    
+    if (!currentQuestion) return;
+    
+    answersContainer.innerHTML = Object.values(players).map(player => {
+        const answer = player.answers && player.answers[currentQuestion.id];
+        let statusClass = 'no-answer';
+        let statusText = 'لم يجب';
+        
+        if (answer) {
+            if (answer.answer === currentQuestion.answer) {
+                statusClass = 'correct';
+                statusText = 'صحيح';
+            } else {
+                statusClass = 'incorrect';
+                statusText = 'خطأ';
+            }
+        }
+        
+        return `
+            <div class="answer-item ${statusClass}">
+                <div class="player-name">${player.name}</div>
+                <div class="answer-status">${statusText}</div>
+            </div>
+        `;
+    }).join('');
+}
+
+function setupHostGlobalFunctions() {    // Start game function
+    window.startGame = async function() {
+        try {
+            await startQuiz(gameState.gameCode);
+            await sendNextQuestion(gameState.gameCode, 0);
+            showNotification('تم بدء المسابقة بنجاح');
+        } catch (error) {
+            showNotification('فشل في بدء المسابقة: ' + error.message, 'error');
+        }
+    };
+    
+    // Next question function
+    window.nextQuestion = async function() {
+        const nextIndex = gameState.currentQuestionIndex + 1;
+        
+        if (nextIndex >= questions.length) {
+            // End game
+            await endGame(gameState.gameCode);
+            showResults();
+            return;
+        }
+        
+        try {
+            await sendNextQuestion(gameState.gameCode, nextIndex);
+        } catch (error) {
+            showNotification('فشل في إرسال السؤال التالي: ' + error.message, 'error');
+        }
+    };
+    
+    // End game function
+    window.endGame = async function() {
+        if (confirm('هل أنت متأكد من إنهاء المسابقة؟')) {
+            try {
+                await endGame(gameState.gameCode);
+                showResults();
+            } catch (error) {
+                showNotification('فشل في إنهاء المسابقة: ' + error.message, 'error');
+            }
+        }
+    };
+    
+    // Show results function
+    window.showResults = function() {
+        document.getElementById('game-controls').classList.add('hidden');
+        document.getElementById('results-section').classList.remove('hidden');
+        
+        // Get final leaderboard
+        getLeaderboard(gameState.gameCode, (leaderboard) => {
+            displayLeaderboard(leaderboard, 'final-leaderboard');
+        });
+    };
+    
+    // Copy game code function
+    window.copyGameCode = function() {
+        navigator.clipboard.writeText(gameState.gameCode).then(() => {
+            showNotification('تم نسخ رمز المسابقة');
+        });
+    };
+    
+    // New game function
+    window.newGame = function() {
+        localStorage.clear();
+        window.location.href = 'index.html';
+    };
+    
+    // Go home function
+    window.goHome = function() {
+        if (gameState.gameUnsubscribe) gameState.gameUnsubscribe();
+        if (gameState.playersUnsubscribe) gameState.playersUnsubscribe();
+        localStorage.clear();
+        window.location.href = 'index.html';
+    };
+}
+
+// Player Interface Functions
+function initPlayerInterface() {
+    // Update UI with player info
+    document.getElementById('player-name-display').textContent = gameState.playerName;
+    document.getElementById('player-emoji-display').textContent = gameState.playerEmoji;
+    document.getElementById('game-code-small').textContent = gameState.gameCode;
+    
+    // Listen to game state changes
+    gameState.gameUnsubscribe = listenToGame(gameState.gameCode, handlePlayerGameStateChange);
+    
+    // Listen to players for count
+    gameState.playersUnsubscribe = listenToPlayers(gameState.gameCode, handlePlayerPlayersChange);
+    
+    // Set up global functions
+    setupPlayerGlobalFunctions();
+}
+
+function handlePlayerGameStateChange(snapshot) {
+    const game = snapshot.val();
+    if (!game) {
+        showDisconnectedScreen();
+        return;
+    }
+    
+    if (game.status === 'waiting') {
+        showWaitingScreen();
+    } else if (game.status === 'active') {
+        if (game.currentQuestion !== undefined) {
+            showQuestionScreen(game.currentQuestion);
+        }
+    } else if (game.status === 'finished') {
+        showFinalResultsScreen();
+    }
+}
+
+function handlePlayerPlayersChange(snapshot) {
+    const players = snapshot.val();
+    const playerData = players && players[gameState.playerName];
+    
+    if (playerData) {
+        gameState.playerScore = playerData.score || 0;
+        document.getElementById('player-score').textContent = gameState.playerScore;
+    }
+    
+    // Update waiting player count
+    const waitingCountElement = document.getElementById('waiting-player-count');
+    if (waitingCountElement) {
+        waitingCountElement.textContent = players ? Object.keys(players).length : 0;
+    }
+}
+
+function showWaitingScreen() {
+    hideAllScreens();
+    document.getElementById('waiting-screen').classList.remove('hidden');
+}
+
+function showQuestionScreen(questionIndex) {
+    if (questionIndex >= questions.length) return;
+    
+    const question = questions[questionIndex];
+    gameState.currentQuestionIndex = questionIndex;
+    gameState.selectedAnswer = null;
+    gameState.questionStartTime = Date.now();
+    
+    hideAllScreens();
+    document.getElementById('question-screen').classList.remove('hidden');
+    
+    // Update question display
+    document.getElementById('current-q-num').textContent = questionIndex + 1;
+    document.getElementById('total-q-num').textContent = getTotalQuestions();
+    document.getElementById('question-text').textContent = question.question;
+    document.getElementById('question-difficulty').textContent = getDifficultyText(question.difficulty);
+    
+    // Display choices
+    const choicesContainer = document.getElementById('choices-container');
+    choicesContainer.innerHTML = question.choices.map((choice, index) => `
+        <button class="choice-btn" data-choice="${choice}" onclick="selectChoice('${choice}')">
+            ${String.fromCharCode(65 + index)}. ${choice}
+        </button>
+    `).join('');
+    
+    // Start timer
+    startPlayerQuestionTimer(question.timeLimit || 20);
+    
+    // Reset submit button
+    document.getElementById('submit-answer-btn').disabled = true;
+}
+
+function getDifficultyText(difficulty) {
+    const difficultyMap = {
+        'easy': 'سهل',
+        'medium': 'متوسط',
+        'hard': 'صعب'
+    };
+    return difficultyMap[difficulty] || difficulty;
+}
+
+function startPlayerQuestionTimer(timeLimit) {
+    let timeLeft = timeLimit;
+    const timerElement = document.getElementById('question-timer');
+    
+    if (gameState.timerInterval) {
+        clearInterval(gameState.timerInterval);
+    }
+    
+    gameState.timerInterval = setInterval(() => {
+        timerElement.textContent = timeLeft;
+        
+        if (timeLeft <= 5) {
+            timerElement.style.color = '#dc3545';
+            timerElement.style.animation = 'pulse 0.5s infinite';
+        }
+        
+        if (timeLeft <= 0) {
+            clearInterval(gameState.timerInterval);
+            timerElement.style.animation = 'none';
+            timerElement.style.color = 'inherit';
+            
+            // Auto submit if no answer selected
+            if (!gameState.selectedAnswer) {
+                submitCurrentAnswer();
+            }
+        }
+        
+        timeLeft--;
+    }, 1000);
+}
+
+function showResultScreen(isCorrect, correctAnswer, pointsEarned) {
+    hideAllScreens();
+    document.getElementById('result-screen').classList.remove('hidden');
+    
+    const resultIcon = document.getElementById('result-icon');
+    const resultTitle = document.getElementById('result-title');
+    const correctAnswerElement = document.getElementById('correct-answer-text');
+    const pointsElement = document.getElementById('points-earned');
+    
+    if (isCorrect) {
+        resultIcon.innerHTML = '<i class="fas fa-check-circle correct"></i>';
+        resultTitle.textContent = 'إجابة صحيحة!';
+        resultTitle.style.color = '#28a745';
+        pointsElement.textContent = `+${pointsEarned}`;
+        pointsElement.style.color = '#28a745';
+        playSound('correct');
+    } else {
+        resultIcon.innerHTML = '<i class="fas fa-times-circle incorrect"></i>';
+        resultTitle.textContent = 'إجابة خاطئة';
+        resultTitle.style.color = '#dc3545';
+        pointsElement.textContent = '+0';
+        pointsElement.style.color = '#dc3545';
+        playSound('incorrect');
+    }
+    
+    correctAnswerElement.textContent = correctAnswer;
+}
+
+function showFinalResultsScreen() {
+    hideAllScreens();
+    
+    // Get and display leaderboard first to determine if player is winner
+    getLeaderboard(gameState.gameCode, (leaderboard) => {
+        const playerRank = leaderboard.findIndex(p => p.name === gameState.playerName) + 1;
+        
+        // Check if player is the winner (1st place)
+        if (playerRank === 1 && leaderboard.length > 1) {
+            // Show winner screen
+            document.getElementById('winner-screen').classList.remove('hidden');
+            document.getElementById('winner-name-text').textContent = gameState.playerName;
+            document.getElementById('winner-emoji').textContent = gameState.playerEmoji;
+            document.getElementById('winner-final-score').textContent = gameState.playerScore;
+            
+            // Add celebration effects
+            createFireworks();
+            playSound('correct');
+            
+            gameState.isWinner = true;
+        } else {
+            // Show regular final results
+            document.getElementById('final-results-screen').classList.remove('hidden');
+            document.getElementById('final-score').textContent = gameState.playerScore;
+            document.getElementById('final-rank').textContent = `#${playerRank}`;
+            displayLeaderboard(leaderboard, 'player-leaderboard');
+        }
+    });
+}
+
+function showDisconnectedScreen() {
+    hideAllScreens();
+    document.getElementById('disconnected-screen').classList.remove('hidden');
+}
+
+function hideAllScreens() {
+    const screens = [
+        'waiting-screen',
+        'question-screen', 
+        'result-screen',
+        'winner-screen',
+        'final-results-screen',
+        'disconnected-screen'
+    ];
+    
+    screens.forEach(screenId => {
+        const screen = document.getElementById(screenId);
+        if (screen) screen.classList.add('hidden');
+    });
+}
+
+function setupPlayerGlobalFunctions() {
+    // Select choice function
+    window.selectChoice = function(choice) {
+        gameState.selectedAnswer = choice;
+        
+        // Update UI
+        document.querySelectorAll('.choice-btn').forEach(btn => {
+            btn.classList.remove('selected');
+        });
+        
+        document.querySelector(`[data-choice="${choice}"]`).classList.add('selected');
+        document.getElementById('submit-answer-btn').disabled = false;
+    };
+    
+    // Submit answer function
+    window.submitAnswer = function() {
+        submitCurrentAnswer();
+    };
+    
+    // Reconnect function
+    window.reconnect = function() {
+        window.location.reload();
+    };
+    
+    // Play again function
+    window.playAgain = function() {
+        localStorage.removeItem('playerName');
+        window.location.href = 'index.html';
+    };
+    
+    // Go home function
+    window.goHome = function() {
+        if (gameState.gameUnsubscribe) gameState.gameUnsubscribe();
+        if (gameState.playersUnsubscribe) gameState.playersUnsubscribe();
+        localStorage.clear();
+        window.location.href = 'index.html';
+    };
+    
+    // Celebrate again function
+    window.celebrateAgain = function() {
+        createFireworks();
+        playSound('correct');
+    };
+    
+    // View leaderboard function
+    window.viewLeaderboard = function() {
+        hideAllScreens();
+        document.getElementById('final-results-screen').classList.remove('hidden');
+        document.getElementById('final-score').textContent = gameState.playerScore;
+        
+        getLeaderboard(gameState.gameCode, (leaderboard) => {
+            const playerRank = leaderboard.findIndex(p => p.name === gameState.playerName) + 1;
+            document.getElementById('final-rank').textContent = `#${playerRank}`;
+            displayLeaderboard(leaderboard, 'player-leaderboard');
+        });
+    };
+}
+
+// Fireworks animation function
+function createFireworks() {
+    const fireworksContainer = document.getElementById('fireworks');
+    if (!fireworksContainer) return;
+    
+    // Clear existing fireworks
+    fireworksContainer.innerHTML = '';
+    
+    // Create multiple fireworks
+    for (let i = 0; i < 5; i++) {
+        setTimeout(() => {
+            createSingleFirework(fireworksContainer);
+        }, i * 300);
+    }
+}
+
+function createSingleFirework(container) {
+    const firework = document.createElement('div');
+    firework.className = 'firework';
+    
+    // Random position
+    const x = Math.random() * 100;
+    const y = Math.random() * 100;
+    
+    firework.style.left = x + '%';
+    firework.style.top = y + '%';
+    
+    // Random colors
+    const colors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#f9ca24', '#6c5ce7', '#fd79a8'];
+    const color = colors[Math.floor(Math.random() * colors.length)];
+    
+    // Create particles
+    for (let i = 0; i < 12; i++) {
+        const particle = document.createElement('div');
+        particle.className = 'firework-particle';
+        particle.style.backgroundColor = color;
+        
+        const angle = (i * 30) * Math.PI / 180;
+        const distance = 50 + Math.random() * 50;
+        
+        particle.style.setProperty('--x', Math.cos(angle) * distance + 'px');
+        particle.style.setProperty('--y', Math.sin(angle) * distance + 'px');
+        
+        firework.appendChild(particle);
+    }
+    
+    container.appendChild(firework);
+    
+    // Remove after animation
+    setTimeout(() => {
+        if (firework.parentNode) {
+            firework.parentNode.removeChild(firework);
+        }
+    }, 1000);
+}
+
+// Enhanced scoring with speed bonus
+async function submitCurrentAnswer() {
+    const question = questions[gameState.currentQuestionIndex];
+    const timeToAnswer = Date.now() - gameState.questionStartTime;
+    const answer = gameState.selectedAnswer || '';
+    
+    try {
+        // Submit answer to Firebase
+        await firebaseSubmitAnswer(
+            gameState.gameCode,
+            gameState.playerName,
+            question.id,
+            answer,
+            timeToAnswer
+        );
+        
+        // Calculate score with enhanced speed bonus
+        const isCorrect = answer === question.answer;
+        let pointsEarned = 0;
+        
+        if (isCorrect) {
+            // Base points
+            const basePoints = question.points || 100;
+            
+            // Speed bonus - more points for faster answers
+            const timeLimit = (question.timeLimit || 20) * 1000;
+            const speedRatio = Math.max(0, (timeLimit - timeToAnswer) / timeLimit);
+            const speedBonus = Math.floor(basePoints * speedRatio * 0.5); // Up to 50% bonus
+            
+            pointsEarned = basePoints + speedBonus;
+            gameState.playerScore += pointsEarned;
+            
+            // Update score in Firebase
+            await updatePlayerScore(gameState.gameCode, gameState.playerName, gameState.playerScore);
+        }
+        
+        // Show result screen
+        showResultScreen(isCorrect, question.answer, pointsEarned);
+        
+    } catch (error) {
+        console.error('Error submitting answer:', error);
+        showNotification('فشل في إرسال الإجابة: ' + error.message, 'error');
+    }
+}
+
+// Utility Functions
+function displayLeaderboard(leaderboard, containerId) {
+    const container = document.getElementById(containerId);
+    
+    if (!leaderboard || leaderboard.length === 0) {
+        container.innerHTML = '<p class="text-center">لا توجد نتائج</p>';
+        return;
+    }
+    
+    container.innerHTML = leaderboard.map((player, index) => {
+        const isCurrentPlayer = player.name === gameState.playerName;
+        let rankClass = '';
+        
+        if (index === 0) rankClass = 'rank-1';
+        else if (index === 1) rankClass = 'rank-2';
+        else if (index === 2) rankClass = 'rank-3';
+        
+        return `
+            <div class="leaderboard-item ${rankClass} ${isCurrentPlayer ? 'me' : ''}">
+                <div class="player-info-lb">
+                    <div class="rank-badge">${index + 1}</div>
+                    <div class="player-emoji-lb">${player.emoji || '😊'}</div>
+                    <div class="player-name-lb">${player.name}</div>
+                </div>
+                <div class="player-score-lb">${player.score} نقطة</div>
+            </div>
+        `;    }).join('');
+}
+
+function showNotification(message, type = 'success') {
+    const notification = document.getElementById('notification');
+    const notificationText = document.getElementById('notification-text');
+    
+    notificationText.textContent = message;
+    notification.classList.remove('hidden');
+    
+    // Auto hide after 3 seconds
+    setTimeout(() => {
+        notification.classList.add('hidden');
+    }, 3000);
+}
+
+function playSound(soundName) {
+    if (sounds[soundName]) {
+        sounds[soundName].play().catch(() => {
+            // Ignore sound play errors
+        });
+    }
+}
+
+// Cleanup on page unload
+window.addEventListener('beforeunload', () => {
+    if (gameState.gameUnsubscribe) gameState.gameUnsubscribe();
+    if (gameState.playersUnsubscribe) gameState.playersUnsubscribe();
+    if (gameState.timerInterval) clearInterval(gameState.timerInterval);
+});
+
+// Export for use in HTML pages
+window.gameState = gameState;

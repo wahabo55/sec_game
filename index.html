@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>أمان المعلومات - مسابقة</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="styles.css" rel="stylesheet">
+</head>
+<body>    <div class="container">
+        <!-- Header -->        <header class="header">
+            <div class="logo">
+                <img src="logo.png" alt="شعار الهيئة" class="authority-logo">
+                <div class="header-text">
+                    <h1>الهيئة العامة للقوى العاملة</h1>
+                    <h2>قسم سرية المعلومات</h2>
+                    <p>مسابقة أمان المعلومات التفاعلية</p>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <div class="welcome-section">
+                <div class="welcome-card">
+                    <div class="department-badge">
+                        <i class="fas fa-shield-alt"></i>
+                        <span>قسم سرية المعلومات</span>
+                    </div>
+                    <h2>مرحباً بكم في مسابقة أمان المعلومات</h2>
+                    <p>اختبر معلوماتك في أمان المعلومات من خلال هذه المسابقة التفاعلية المقدمة من الهيئة العامة للقوى العاملة</p>
+                    
+                    <div class="user-selection">
+                        <div class="role-card host-card" onclick="selectRole('host')">
+                            <div class="role-icon">
+                                <i class="fas fa-user-tie"></i>
+                            </div>
+                            <h3>مقدم المسابقة</h3>
+                            <p>إنشاء جلسة مسابقة جديدة وإدارتها</p>
+                            <button class="btn btn-primary">بدء كمقدم</button>
+                        </div>
+
+                        <div class="role-card player-card" onclick="selectRole('player')">
+                            <div class="role-icon">
+                                <i class="fas fa-users"></i>
+                            </div>
+                            <h3>مشارك</h3>
+                            <p>الانضمام إلى مسابقة موجودة برمز الدخول</p>
+                            <button class="btn btn-secondary">انضمام كمشارك</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Host Section -->
+            <div id="host-section" class="section hidden">
+                <div class="form-card">
+                    <h3>إنشاء مسابقة جديدة</h3>
+                    <form id="host-form">
+                        <div class="input-group">
+                            <label for="host-name">اسم مقدم المسابقة</label>
+                            <input type="text" id="host-name" required placeholder="أدخل اسمك">
+                        </div>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-plus"></i>
+                            إنشاء المسابقة
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Player Section -->
+            <div id="player-section" class="section hidden">
+                <div class="form-card">
+                    <h3>الانضمام إلى المسابقة</h3>
+                    <form id="player-form">                        <div class="input-group">
+                            <label for="game-code">رمز المسابقة</label>
+                            <input type="text" id="game-code" required placeholder="أدخل رمز المسابقة (6 أرقام)" maxlength="6">
+                        </div>
+                        <div class="input-group">
+                            <label for="player-name">اسم المشارك</label>
+                            <input type="text" id="player-name" required placeholder="أدخل اسمك">
+                        </div>
+                        <div class="input-group">
+                            <label for="player-emoji">اختر رمزك التعبيري</label>
+                            <div class="emoji-selector" id="emoji-selector">
+                                <button type="button" class="emoji-btn" data-emoji="😊">😊</button>
+                                <button type="button" class="emoji-btn" data-emoji="🚀">🚀</button>
+                                <button type="button" class="emoji-btn" data-emoji="⭐">⭐</button>
+                                <button type="button" class="emoji-btn" data-emoji="🎯">🎯</button>
+                                <button type="button" class="emoji-btn" data-emoji="🔥">🔥</button>
+                                <button type="button" class="emoji-btn" data-emoji="💪">💪</button>
+                                <button type="button" class="emoji-btn" data-emoji="🏆">🏆</button>
+                                <button type="button" class="emoji-btn" data-emoji="⚡">⚡</button>
+                                <button type="button" class="emoji-btn" data-emoji="🎪">🎪</button>
+                                <button type="button" class="emoji-btn" data-emoji="🌟">🌟</button>
+                                <button type="button" class="emoji-btn" data-emoji="🎨">🎨</button>
+                                <button type="button" class="emoji-btn" data-emoji="🎭">🎭</button>
+                            </div>
+                            <input type="hidden" id="selected-emoji" value="😊">
+                        </div>
+                        <button type="submit" class="btn btn-secondary">
+                            <i class="fas fa-sign-in-alt"></i>
+                            انضمام
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Back Button -->
+            <div class="back-section hidden">
+                <button class="btn btn-outline" onclick="goBack()">
+                    <i class="fas fa-arrow-right"></i>
+                    العودة
+                </button>
+            </div>        </main>
+
+        <!-- Error Modal -->
+        <div id="error-modal" class="modal hidden">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>خطأ</h3>
+                    <button class="modal-close" onclick="closeModal()" type="button">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p id="error-message"></p>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-primary" onclick="closeModal()" type="button">موافق</button>
+                    <button class="btn btn-secondary" onclick="closeModal()" type="button">إغلاق</button>
+                </div>
+            </div>
+        </div>
+    </div>    <!-- JavaScript -->
+    <script type="module">
+        let currentRole = null;
+        let createGame, joinGame;
+        let firebaseReady = false;
+          // Handle any script errors that might cause popups
+        window.addEventListener('error', function(e) {
+            console.error('Script error:', e);
+        });
+
+        window.addEventListener('unhandledrejection', function(e) {
+            console.error('Unhandled promise rejection:', e);
+            // Only show error if it's not a Firebase permission error on initial load
+            if (!e.reason.message?.includes('PERMISSION_DENIED')) {
+                showError('حدث خطأ غير متوقع: ' + e.reason.message);
+            }
+        });// Initialize Firebase functions
+        async function initializeFirebase() {
+            try {
+                console.log('Loading Firebase module...');
+                // Add timeout to prevent infinite loading
+                const timeout = new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('Firebase load timeout')), 10000)
+                );
+                
+                const firebaseLoad = import('./firebase-config.js');
+                const firebaseModule = await Promise.race([firebaseLoad, timeout]);
+                
+                createGame = firebaseModule.createGame;
+                joinGame = firebaseModule.joinGame;
+                firebaseReady = true;
+                console.log('Firebase module loaded successfully');
+            } catch (error) {
+                console.error('Failed to load Firebase module:', error);
+                firebaseReady = false;
+                // Show a user-friendly message but don't block the UI
+                console.log('Firebase not available. Some features will be limited.');
+            }
+        }
+
+        // Initialize Firebase when page loads
+        initializeFirebase();        window.selectRole = function(role) {
+            console.log('Selecting role:', role);
+            currentRole = role;
+            
+            // Hide welcome section
+            document.querySelector('.welcome-section').style.display = 'none';
+            console.log('Welcome section hidden');
+            
+            // Show back button
+            document.querySelector('.back-section').classList.remove('hidden');
+            document.querySelector('.back-section').classList.add('visible');
+            console.log('Back button shown');
+            
+            // Show appropriate section
+            if (role === 'host') {
+                console.log('Showing host section');
+                document.getElementById('host-section').classList.remove('hidden');
+                document.getElementById('host-section').classList.add('visible');
+                // Ensure player section is hidden
+                document.getElementById('player-section').classList.add('hidden');
+                document.getElementById('player-section').classList.remove('visible');
+            } else {
+                console.log('Showing player section');
+                document.getElementById('player-section').classList.remove('hidden');
+                document.getElementById('player-section').classList.add('visible');
+                // Ensure host section is hidden
+                document.getElementById('host-section').classList.add('hidden');
+                document.getElementById('host-section').classList.remove('visible');
+            }
+            
+            console.log('Role selection complete');
+        };        window.goBack = function() {
+            console.log('Going back to welcome screen');
+            
+            // Show welcome section
+            document.querySelector('.welcome-section').style.display = 'block';
+            console.log('Welcome section shown');
+            
+            // Hide back button
+            document.querySelector('.back-section').classList.add('hidden');
+            document.querySelector('.back-section').classList.remove('visible');
+            console.log('Back button hidden');
+            
+            // Hide both form sections
+            document.getElementById('host-section').classList.add('hidden');
+            document.getElementById('host-section').classList.remove('visible');
+            document.getElementById('player-section').classList.add('hidden');
+            document.getElementById('player-section').classList.remove('visible');
+            console.log('Form sections hidden');
+            
+            currentRole = null;
+            console.log('Back navigation complete');
+        };
+
+        window.showError = function(message) {
+            console.log('Showing error:', message);
+            const errorModal = document.getElementById('error-modal');
+            const errorMessage = document.getElementById('error-message');
+            
+            if (!errorModal || !errorMessage) {
+                // Fallback to alert if modal elements are missing
+                alert('خطأ: ' + message);
+                return;
+            }
+            
+            errorMessage.textContent = message;
+            errorModal.classList.remove('hidden');
+            
+            // Add click outside to close
+            errorModal.onclick = function(e) {
+                if (e.target === errorModal) {
+                    closeModal();
+                }
+            };
+        }
+
+        window.closeModal = function() {
+            console.log('Closing modal');
+            const errorModal = document.getElementById('error-modal');
+            if (errorModal) {
+                errorModal.classList.add('hidden');
+                errorModal.onclick = null; // Remove click handler
+            }
+        }
+
+        // Add escape key handler
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closeModal();
+            }
+        });        // Host form submission
+        document.getElementById('host-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const hostName = document.getElementById('host-name').value.trim();
+            
+            if (!hostName) {
+                showError('يرجى إدخال اسم مقدم المسابقة');
+                return;
+            }
+
+            if (!firebaseReady || !createGame) {
+                showError('لم يتم تحميل Firebase بشكل صحيح. يرجى التحقق من الاتصال بالإنترنت وإعادة تحديث الصفحة.');
+                return;
+            }            try {
+                const gameCode = await createGame(hostName);
+                localStorage.setItem('gameCode', gameCode);
+                localStorage.setItem('hostName', hostName);
+                localStorage.setItem('userRole', 'host');
+                window.location.href = 'host.html';
+            } catch (error) {
+                console.error('Host creation error:', error);
+                let errorMessage = 'فشل في إنشاء المسابقة';
+                if (error.message.includes('PERMISSION_DENIED')) {
+                    errorMessage = 'لا يمكن الوصول إلى قاعدة البيانات. يرجى التحقق من إعدادات Firebase أو فتح test.html لمزيد من التفاصيل.';
+                } else {
+                    errorMessage += ': ' + error.message;
+                }
+                showError(errorMessage);
+            }
+        });// Player form submission
+        document.getElementById('player-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const gameCode = document.getElementById('game-code').value.trim();
+            const playerName = document.getElementById('player-name').value.trim();
+            const playerEmoji = document.getElementById('selected-emoji').value;
+            
+            console.log('Form data:', { gameCode, playerName, playerEmoji }); // Debug log
+            
+            if (!gameCode || !playerName) {
+                showError('يرجى إدخال رمز المسابقة واسم المشارك');
+                return;
+            }
+
+            if (gameCode.length !== 6 || !/^\d+$/.test(gameCode)) {
+                showError('رمز المسابقة يجب أن يكون 6 أرقام');
+                return;
+            }            if (!firebaseReady || !joinGame) {
+                showError('لم يتم تحميل Firebase بشكل صحيح. يرجى التحقق من الاتصال بالإنترنت وإعادة تحديث الصفحة.');
+                return;
+            }            try {
+                console.log('Calling joinGame with:', gameCode, playerName, playerEmoji); // Debug log
+                await joinGame(gameCode, playerName, playerEmoji);
+                localStorage.setItem('gameCode', gameCode);
+                localStorage.setItem('playerName', playerName);
+                localStorage.setItem('playerEmoji', playerEmoji);
+                localStorage.setItem('userRole', 'player');
+                window.location.href = 'player.html';
+            } catch (error) {
+                console.error('Join game error:', error); // Debug log
+                let errorMessage = 'فشل في الانضمام للمسابقة';                if (error.message.includes('PERMISSION_DENIED')) {
+                    errorMessage = 'لا يمكن الوصول إلى قاعدة البيانات. يرجى التحقق من إعدادات Firebase أو فتح test.html لمزيد من التفاصيل.';
+                } else if (error.message.includes('not found')) {
+                    errorMessage = 'رمز المسابقة غير صحيح أو انتهت صلاحيته';
+                } else {
+                    errorMessage += ': ' + error.message;
+                }
+                showError(errorMessage);
+            }
+        });
+
+        // Auto-focus on inputs
+        document.getElementById('host-name').addEventListener('focus', function() {
+            this.select();
+        });
+
+        document.getElementById('game-code').addEventListener('input', function() {
+            this.value = this.value.replace(/\D/g, '');
+        });
+
+        document.getElementById('player-name').addEventListener('focus', function() {
+            this.select();
+        });        // Load saved data
+        window.addEventListener('load', () => {
+            console.log('Page loaded - initializing sections');
+            
+            // Ensure initial state: only welcome section visible
+            document.querySelector('.welcome-section').style.display = 'block';
+            document.getElementById('host-section').classList.add('hidden');
+            document.getElementById('host-section').classList.remove('visible');
+            document.getElementById('player-section').classList.add('hidden');
+            document.getElementById('player-section').classList.remove('visible');
+            document.querySelector('.back-section').classList.add('hidden');
+            document.querySelector('.back-section').classList.remove('visible');
+            
+            console.log('Initial section states set');
+            
+            // Check if required elements exist
+            const requiredElements = [
+                'host-name', 'host-form', 'player-form', 'game-code', 
+                'player-name', 'selected-emoji', 'error-modal'
+            ];
+            
+            const missingElements = requiredElements.filter(id => !document.getElementById(id));
+            if (missingElements.length > 0) {
+                console.error('Missing elements:', missingElements);
+                alert('خطأ في تحميل الصفحة. يرجى إعادة تحديث الصفحة.');
+                return;
+            }
+
+            const savedHostName = localStorage.getItem('hostName');
+            const savedPlayerName = localStorage.getItem('playerName');
+            const savedPlayerEmoji = localStorage.getItem('playerEmoji');
+            
+            if (savedHostName) {
+                document.getElementById('host-name').value = savedHostName;
+            }
+            
+            if (savedPlayerName) {
+                document.getElementById('player-name').value = savedPlayerName;
+            }            if (savedPlayerEmoji) {
+                document.getElementById('selected-emoji').value = savedPlayerEmoji;
+                const savedEmojiBtn = document.querySelector(`[data-emoji="${savedPlayerEmoji}"]`);
+                if (savedEmojiBtn) {
+                    savedEmojiBtn.classList.add('selected');
+                }
+            }// Setup emoji selector
+            document.querySelectorAll('.emoji-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.emoji-btn').forEach(b => b.classList.remove('selected'));
+                    btn.classList.add('selected');
+                    document.getElementById('selected-emoji').value = btn.dataset.emoji;
+                });
+            });
+
+            // Select first emoji by default if none is saved
+            if (!savedPlayerEmoji) {
+                const firstEmoji = document.querySelector('.emoji-btn');
+                if (firstEmoji) {
+                    firstEmoji.classList.add('selected');
+                    document.getElementById('selected-emoji').value = firstEmoji.dataset.emoji;
+                }
+            }
+        });
+    </script>
+</body>
+</html>

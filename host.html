@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>لوحة تحكم المقدم - مسابقة أمان المعلومات</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="styles.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container">        <!-- Header -->        <header class="header">
+            <div class="logo">
+                <img src="logo.png" alt="شعار الهيئة" class="authority-logo">
+                <div class="header-text">
+                    <h1>الهيئة العامة للقوى العاملة</h1>
+                    <h2>قسم سرية المعلومات - لوحة تحكم المقدم</h2>
+                </div>
+            </div>
+            <div class="header-actions">
+                <button class="btn btn-outline" onclick="goHome()">
+                    <i class="fas fa-home"></i>
+                    الرئيسية
+                </button>
+            </div>
+        </header>
+
+        <!-- Game Status -->
+        <div class="game-status">
+            <div class="status-card">
+                <div class="game-code-display">
+                    <h2>رمز المسابقة</h2>
+                    <div class="code-box" id="game-code-display">
+                        <span id="game-code">------</span>
+                        <button class="copy-btn" onclick="copyGameCode()" title="نسخ الرمز">
+                            <i class="fas fa-copy"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="game-info">
+                    <div class="info-item">
+                        <i class="fas fa-user-tie"></i>
+                        <span>المقدم: <span id="host-name">--</span></span>
+                    </div>
+                    <div class="info-item">
+                        <i class="fas fa-users"></i>
+                        <span>المشاركين: <span id="player-count">0</span></span>
+                    </div>
+                    <div class="info-item">
+                        <i class="fas fa-clock"></i>
+                        <span>الحالة: <span id="game-status">في الانتظار</span></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Players List -->
+        <div class="players-section">
+            <h3><i class="fas fa-users"></i> المشاركين المتصلين</h3>
+            <div class="players-grid" id="players-list">
+                <div class="no-players">
+                    <i class="fas fa-user-plus"></i>
+                    <p>في انتظار انضمام المشاركين...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quiz Controls -->
+        <div class="quiz-controls">
+            <div id="waiting-controls" class="control-section">
+                <h3>تحكم في المسابقة</h3>
+                <button id="start-game-btn" class="btn btn-primary btn-lg" onclick="startGame()" disabled>
+                    <i class="fas fa-play"></i>
+                    بدء المسابقة
+                </button>
+                <p class="help-text">يحتاج إلى مشارك واحد على الأقل لبدء المسابقة</p>
+            </div>
+
+            <div id="game-controls" class="control-section hidden">
+                <div class="question-display">
+                    <div class="question-header">
+                        <h3>السؤال <span id="current-question-number">1</span> من <span id="total-questions">10</span></h3>
+                        <div class="timer-display">
+                            <i class="fas fa-clock"></i>
+                            <span id="timer">15</span>
+                        </div>
+                    </div>
+                    
+                    <div class="question-content">
+                        <h4 id="current-question-text">--</h4>
+                        <div class="choices-display" id="choices-display">
+                            <!-- Choices will be populated here -->
+                        </div>
+                    </div>
+                </div>
+
+                <div class="game-actions">
+                    <button id="next-question-btn" class="btn btn-primary" onclick="nextQuestion()" disabled>
+                        <i class="fas fa-forward"></i>
+                        السؤال التالي
+                    </button>
+                    <button id="show-results-btn" class="btn btn-success hidden" onclick="showResults()">
+                        <i class="fas fa-trophy"></i>
+                        عرض النتائج
+                    </button>
+                    <button id="end-game-btn" class="btn btn-danger" onclick="endGame()">
+                        <i class="fas fa-stop"></i>
+                        إنهاء المسابقة
+                    </button>
+                </div>
+
+                <div class="answers-summary" id="answers-summary">
+                    <h4>إجابات المشاركين</h4>
+                    <div class="answers-grid" id="answers-grid">
+                        <!-- Player answers will be shown here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Results Section -->
+            <div id="results-section" class="control-section hidden">
+                <h3><i class="fas fa-trophy"></i> نتائج المسابقة</h3>
+                <div class="leaderboard" id="final-leaderboard">
+                    <!-- Leaderboard will be populated here -->
+                </div>
+                <div class="results-actions">
+                    <button class="btn btn-primary" onclick="newGame()">
+                        <i class="fas fa-plus"></i>
+                        مسابقة جديدة
+                    </button>
+                    <button class="btn btn-outline" onclick="goHome()">
+                        <i class="fas fa-home"></i>
+                        الرئيسية
+                    </button>
+                </div>
+            </div>        </div>
+
+        <!-- Notification -->
+        <div id="notification" class="notification hidden">
+            <p id="notification-text"></p>
+        </div>
+    </div>
+
+    <script type="module" src="game.js"></script>
+</body>
+</html>

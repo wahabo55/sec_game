@@ -8,7 +8,9 @@ import {
     updatePlayerScore, 
     endGame, 
     getLeaderboard,
-    getCustomQuestions 
+    getCustomQuestions,
+    checkAllPlayersAnswered,
+    clearPlayersAnswerStatus
 } from './firebase-config.js';
 import { questions, getTotalQuestions } from './questions.js';
 
@@ -26,11 +28,11 @@ let gameState = {
     gameUnsubscribe: null,
     playersUnsubscribe: null,
     timerInterval: null,
+    playersCheckInterval: null,
     isWinner: false,
     customQuestions: [],
     isCustomGame: false,
-    hasAnsweredCurrentQuestion: false,
-    answeredQuestions: new Set() // Track which questions the player has answered
+    hasAnsweredCurrentQuestion: false
 };
 
 // Sound effects (optional)
@@ -232,14 +234,15 @@ function displayCurrentQuestion(questionIndex) {
         answersGrid.innerHTML = '';
     }
     
-    // Enable next question button after timer
+    // Disable next question button initially
     const nextQuestionBtn = document.getElementById('next-question-btn');
     if (nextQuestionBtn) {
         nextQuestionBtn.disabled = true;
-        setTimeout(() => {
-            nextQuestionBtn.disabled = false;
-        }, (question.timeLimit || 20) * 1000);
+        nextQuestionBtn.textContent = 'في انتظار إجابة جميع اللاعبين...';
     }
+    
+    // Start checking if all players answered
+    startCheckingPlayersAnswered();
 }
 
 function startQuestionTimer(timeLimit) {
@@ -295,6 +298,36 @@ function showCorrectAnswer() {
             }
         });
     }
+    
+    // Enable next question button after timer ends
+    const nextQuestionBtn = document.getElementById('next-question-btn');
+    if (nextQuestionBtn) {
+        nextQuestionBtn.disabled = false;
+        nextQuestionBtn.textContent = 'السؤال التالي';
+    }
+}
+
+// Check if all players have answered the current question
+function startCheckingPlayersAnswered() {
+    // Clear any existing interval
+    if (gameState.playersCheckInterval) {
+        clearInterval(gameState.playersCheckInterval);
+    }
+    
+    gameState.playersCheckInterval = setInterval(async () => {
+        try {
+            const allAnswered = await checkAllPlayersAnswered(gameState.gameCode, gameState.currentQuestionIndex);
+            const nextQuestionBtn = document.getElementById('next-question-btn');
+            
+            if (allAnswered && nextQuestionBtn) {
+                nextQuestionBtn.disabled = false;
+                nextQuestionBtn.textContent = 'السؤال التالي';
+                clearInterval(gameState.playersCheckInterval);
+            }
+        } catch (error) {
+            console.error('Error checking players answered:', error);
+        }
+    }, 1000); // Check every second
 }
 
 function updateAnswersSummary(players) {
@@ -348,12 +381,12 @@ function setupHostGlobalFunctions() {    // Start game function
             showNotification('فشل في بدء المسابقة: ' + error.message, 'error');
         }
     };
-    
-    // Next question function
+      // Next question function
     window.nextQuestion = async function() {
+        const currentQuestions = gameState.isCustomGame ? gameState.customQuestions : questions;
         const nextIndex = gameState.currentQuestionIndex + 1;
         
-        if (nextIndex >= questions.length) {
+        if (nextIndex >= currentQuestions.length) {
             // End game
             await endGame(gameState.gameCode);
             showResults();
@@ -361,7 +394,17 @@ function setupHostGlobalFunctions() {    // Start game function
         }
         
         try {
+            // Clear player answer statuses for the new question
+            await clearPlayersAnswerStatus(gameState.gameCode);
+            
+            // Send next question
             await sendNextQuestion(gameState.gameCode, nextIndex);
+            
+            // Clear the checking interval
+            if (gameState.playersCheckInterval) {
+                clearInterval(gameState.playersCheckInterval);
+            }
+            
         } catch (error) {
             showNotification('فشل في إرسال السؤال التالي: ' + error.message, 'error');
         }
@@ -446,15 +489,20 @@ function handlePlayerGameStateChange(snapshot) {
         showWaitingScreen();
     } else if (game.status === 'active') {
         if (game.currentQuestion !== undefined) {
-            // Check if this is a new question or if player hasn't answered yet
-            if (game.currentQuestion !== gameState.currentQuestionIndex || 
-                !gameState.answeredQuestions.has(game.currentQuestion)) {
-                gameState.currentQuestionIndex = game.currentQuestion;
+            // Check if this is a new question or if player already answered
+            const currentQuestionIndex = game.currentQuestion;
+            
+            // If it's a new question, reset the answered state
+            if (currentQuestionIndex !== gameState.currentQuestionIndex) {
                 gameState.hasAnsweredCurrentQuestion = false;
-                showQuestionScreen(game.currentQuestion);
-            } else if (gameState.hasAnsweredCurrentQuestion) {
-                // Player has already answered this question, show waiting screen
+                gameState.currentQuestionIndex = currentQuestionIndex;
+            }
+            
+            // Show appropriate screen based on answer status
+            if (gameState.hasAnsweredCurrentQuestion) {
                 showWaitingForNextScreen();
+            } else {
+                showQuestionScreen(currentQuestionIndex);
             }
         }
     } else if (game.status === 'finished') {
@@ -486,13 +534,14 @@ function showWaitingScreen() {
 function showWaitingForNextScreen() {
     hideAllScreens();
     
-    // Create or show a waiting screen for next question
+    // Try to find existing waiting screen first
     let waitingNextScreen = document.getElementById('waiting-next-screen');
+    
     if (!waitingNextScreen) {
         // Create the waiting screen if it doesn't exist
         waitingNextScreen = document.createElement('div');
         waitingNextScreen.id = 'waiting-next-screen';
-        waitingNextScreen.className = 'screen hidden';
+        waitingNextScreen.className = 'screen';
         waitingNextScreen.innerHTML = `
             <div class="waiting-container">
                 <div class="waiting-content">
@@ -502,7 +551,7 @@ function showWaitingForNextScreen() {
                         <div class="bounce3"></div>
                     </div>
                     <h2>تم إرسال إجابتك بنجاح!</h2>
-                    <p>في انتظار السؤال التالي...</p>
+                    <p>في انتظار باقي اللاعبين...</p>
                     <div class="current-score">
                         <span>النقاط الحالية: </span>
                         <span class="score-value">${gameState.playerScore}</span>
@@ -510,15 +559,19 @@ function showWaitingForNextScreen() {
                 </div>
             </div>
         `;
-        document.body.appendChild(waitingNextScreen);
-    } else {
-        // Update the score in existing screen
-        const scoreElement = waitingNextScreen.querySelector('.score-value');
-        if (scoreElement) {
-            scoreElement.textContent = gameState.playerScore;
-        }
+        
+        // Find a good place to insert it
+        const gameContainer = document.querySelector('.container') || document.body;
+        gameContainer.appendChild(waitingNextScreen);
     }
     
+    // Update the score
+    const scoreElement = waitingNextScreen.querySelector('.score-value');
+    if (scoreElement) {
+        scoreElement.textContent = gameState.playerScore;
+    }
+    
+    // Show the screen
     waitingNextScreen.classList.remove('hidden');
 }
 
@@ -529,10 +582,20 @@ function showQuestionScreen(questionIndex) {
     if (questionIndex >= currentQuestions.length) return;
     
     const question = currentQuestions[questionIndex];
-    gameState.currentQuestionIndex = questionIndex;
-    gameState.selectedAnswer = null;
-    gameState.questionStartTime = Date.now();
-    gameState.hasAnsweredCurrentQuestion = false; // Reset answered state for new question
+    
+    // Reset state for new question
+    if (questionIndex !== gameState.currentQuestionIndex) {
+        gameState.hasAnsweredCurrentQuestion = false;
+        gameState.selectedAnswer = null;
+        gameState.questionStartTime = Date.now();
+        gameState.currentQuestionIndex = questionIndex;
+    }
+    
+    // If player has already answered this question, show waiting screen
+    if (gameState.hasAnsweredCurrentQuestion) {
+        showWaitingForNextScreen();
+        return;
+    }
     
     hideAllScreens();
     document.getElementById('question-screen').classList.remove('hidden');
@@ -721,7 +784,9 @@ function hideAllScreens() {
     
     screens.forEach(screenId => {
         const screen = document.getElementById(screenId);
-        if (screen) screen.classList.add('hidden');
+        if (screen) {
+            screen.classList.add('hidden');
+        }
     });
 }
 
@@ -859,24 +924,37 @@ function createSingleFirework(container) {
 
 // Enhanced scoring with speed bonus
 async function submitCurrentAnswer() {
+    if (gameState.hasAnsweredCurrentQuestion) {
+        return; // Already answered this question
+    }
+    
     const currentQuestions = gameState.isCustomGame ? gameState.customQuestions : questions;
     const question = currentQuestions[gameState.currentQuestionIndex];
     const timeToAnswer = Date.now() - gameState.questionStartTime;
     const answer = gameState.selectedAnswer || '';
+    
+    // Disable submit button and clear timer
+    const submitBtn = document.getElementById('submit-answer-btn');
+    if (submitBtn) {
+        submitBtn.disabled = true;
+    }
+    
+    if (gameState.timerInterval) {
+        clearInterval(gameState.timerInterval);
+    }
     
     try {
         // Submit answer to Firebase
         await firebaseSubmitAnswer(
             gameState.gameCode,
             gameState.playerName,
-            question.id,
+            gameState.currentQuestionIndex, // Use question index as ID
             answer,
             timeToAnswer
         );
         
-        // Mark this question as answered
+        // Mark this question as answered locally
         gameState.hasAnsweredCurrentQuestion = true;
-        gameState.answeredQuestions.add(gameState.currentQuestionIndex);
         
         // Calculate score with enhanced speed bonus
         let correctAnswer;
@@ -907,10 +985,10 @@ async function submitCurrentAnswer() {
             await updatePlayerScore(gameState.gameCode, gameState.playerName, gameState.playerScore);
         }
         
-        // Show result screen briefly, then switch to waiting screen
+        // Show result screen briefly, then show waiting screen
         showResultScreen(isCorrect, correctAnswer, pointsEarned);
         
-        // After showing result for 3 seconds, show waiting screen
+        // After 3 seconds, show waiting screen
         setTimeout(() => {
             showWaitingForNextScreen();
         }, 3000);
@@ -918,6 +996,11 @@ async function submitCurrentAnswer() {
     } catch (error) {
         console.error('Error submitting answer:', error);
         showNotification('فشل في إرسال الإجابة: ' + error.message, 'error');
+        
+        // Re-enable submit button on error
+        if (submitBtn) {
+            submitBtn.disabled = false;
+        }
     }
 }
 
@@ -976,6 +1059,7 @@ window.addEventListener('beforeunload', () => {
     if (gameState.gameUnsubscribe) gameState.gameUnsubscribe();
     if (gameState.playersUnsubscribe) gameState.playersUnsubscribe();
     if (gameState.timerInterval) clearInterval(gameState.timerInterval);
+    if (gameState.playersCheckInterval) clearInterval(gameState.playersCheckInterval);
 });
 
 // Export for use in HTML pages

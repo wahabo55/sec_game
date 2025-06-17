@@ -1,6 +1,6 @@
 // Firebase configuration and database functions
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js';
-import { getDatabase, ref, set, push, onValue, off, remove } from 'https://www.gstatic.com/firebasejs/10.7.0/firebase-database.js';
+import { getDatabase, ref, set, push, onValue, off, remove, update } from 'https://www.gstatic.com/firebasejs/10.7.0/firebase-database.js';
 import { 
   getAuth, 
   signInAnonymously, 
@@ -140,17 +140,78 @@ export async function sendNextQuestion(gameCode, questionIndex) {
 // Submit answer (player only)
 export async function submitAnswer(gameCode, playerName, questionId, answer, timeToAnswer) {
   try {
+    // Submit the answer
     const answerRef = ref(database, `games/${gameCode}/players/${playerName}/answers/${questionId}`);
     const answerData = {
       answer,
       timeToAnswer,
       submittedAt: Date.now()
     };
-    
     await set(answerRef, answerData);
+    
+    // Mark player as having answered current question
+    const statusRef = ref(database, `games/${gameCode}/players/${playerName}/currentQuestionStatus`);
+    await set(statusRef, {
+      questionId,
+      hasAnswered: true,
+      answeredAt: Date.now()
+    });
+    
   } catch (error) {
     console.error('Error submitting answer:', error);
     throw error;
+  }
+}
+
+// Check if all players have answered current question
+export async function checkAllPlayersAnswered(gameCode, currentQuestionId) {
+  try {
+    const playersRef = ref(database, `games/${gameCode}/players`);
+    return new Promise((resolve) => {
+      onValue(playersRef, (snapshot) => {
+        const players = snapshot.val();
+        if (!players) {
+          resolve(false);
+          return;
+        }
+        
+        const playerNames = Object.keys(players);
+        const allAnswered = playerNames.every(playerName => {
+          const status = players[playerName].currentQuestionStatus;
+          return status && status.questionId === currentQuestionId && status.hasAnswered;
+        });
+        
+        resolve(allAnswered);
+      }, { onlyOnce: true });
+    });
+  } catch (error) {
+    console.error('Error checking players answered:', error);
+    return false;
+  }
+}
+
+// Clear all players' answer status for new question
+export async function clearPlayersAnswerStatus(gameCode) {
+  try {
+    const playersRef = ref(database, `games/${gameCode}/players`);
+    const snapshot = await new Promise(resolve => onValue(playersRef, resolve, { onlyOnce: true }));
+    const players = snapshot.val();
+    
+    if (players) {
+      const updates = {};
+      Object.keys(players).forEach(playerName => {
+        updates[`${playerName}/currentQuestionStatus`] = {
+          hasAnswered: false,
+          questionId: null,
+          answeredAt: null
+        };
+      });
+      
+      const updateRef = ref(database, `games/${gameCode}/players`);
+      await update(updateRef, updates);
+    }
+  } catch (error) {
+    console.error('Error clearing answer status:', error);
   }
 }
 

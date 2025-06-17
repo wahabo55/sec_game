@@ -7,7 +7,8 @@ import {
     submitAnswer as firebaseSubmitAnswer, 
     updatePlayerScore, 
     endGame, 
-    getLeaderboard 
+    getLeaderboard,
+    getCustomQuestions 
 } from './firebase-config.js';
 import { questions, getTotalQuestions } from './questions.js';
 
@@ -25,7 +26,9 @@ let gameState = {
     gameUnsubscribe: null,
     playersUnsubscribe: null,
     timerInterval: null,
-    isWinner: false
+    isWinner: false,
+    customQuestions: [],
+    isCustomGame: false
 };
 
 // Sound effects (optional)
@@ -71,6 +74,18 @@ function handleGameStateChange(snapshot) {
         showNotification('لم يعد بإمكان العثور على المسابقة', 'error');
         setTimeout(() => window.location.href = 'index.html', 2000);
         return;
+    }
+    
+    // Check if it's a custom game
+    if (game.gameType === 'custom' && game.customQuestions) {
+        gameState.isCustomGame = true;
+        gameState.customQuestions = game.customQuestions;
+        
+        // Update total questions display
+        const totalQuestionsElement = document.getElementById('total-questions');
+        if (totalQuestionsElement) {
+            totalQuestionsElement.textContent = game.customQuestions.length;
+        }
     }
     
     updateGameStatus(game.status);
@@ -139,42 +154,90 @@ function updateGameStatus(status) {
 function showGameControls() {
     document.getElementById('waiting-controls').classList.add('hidden');
     document.getElementById('game-controls').classList.remove('hidden');
-    document.getElementById('total-questions').textContent = getTotalQuestions();
+    
+    const totalQuestions = gameState.isCustomGame ? gameState.customQuestions.length : getTotalQuestions();
+    const totalQuestionsElement = document.getElementById('total-questions');
+    if (totalQuestionsElement) {
+        totalQuestionsElement.textContent = totalQuestions;
+    }
 }
 
 function displayCurrentQuestion(questionIndex) {
-    if (questionIndex >= questions.length) {
+    // Determine which questions to use
+    const currentQuestions = gameState.isCustomGame ? gameState.customQuestions : questions;
+    
+    if (questionIndex >= currentQuestions.length) {
         // Game finished
         showResults();
         return;
     }
     
-    const question = questions[questionIndex];
+    const question = currentQuestions[questionIndex];
     gameState.currentQuestionIndex = questionIndex;
     
     // Update question display
     document.getElementById('current-question-number').textContent = questionIndex + 1;
     document.getElementById('current-question-text').textContent = question.question;
     
-    // Display choices
+    // Display image if exists
+    const questionImageContainer = document.getElementById('question-image');
+    if (question.image) {
+        if (!questionImageContainer) {
+            // Create image container if it doesn't exist
+            const imageDiv = document.createElement('div');
+            imageDiv.id = 'question-image';
+            imageDiv.style.textAlign = 'center';
+            imageDiv.style.marginBottom = '1rem';
+            document.getElementById('current-question-text').parentNode.insertBefore(imageDiv, document.getElementById('current-question-text').nextSibling);
+        }
+        document.getElementById('question-image').innerHTML = `<img src="${question.image}" alt="صورة السؤال" style="max-width: 100%; max-height: 300px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">`;
+    } else if (questionImageContainer) {
+        questionImageContainer.innerHTML = '';
+    }
+    
+    // Display choices based on question type
     const choicesContainer = document.getElementById('choices-display');
-    choicesContainer.innerHTML = question.choices.map((choice, index) => `
-        <div class="choice-item" data-choice="${choice}">
-            ${String.fromCharCode(65 + index)}. ${choice}
-        </div>
-    `).join('');
+    
+    if (question.type === 'true-false') {
+        choicesContainer.innerHTML = `
+            <div class="true-false-choices">
+                <div class="choice-item true-false-choice" data-choice="true">
+                    <i class="fas fa-check"></i>
+                    صحيح
+                </div>
+                <div class="choice-item true-false-choice" data-choice="false">
+                    <i class="fas fa-times"></i>
+                    خطأ
+                </div>
+            </div>
+        `;
+    } else {
+        // Multiple choice or default
+        const choices = question.choices || [];
+        choicesContainer.innerHTML = choices.map((choice, index) => `
+            <div class="choice-item" data-choice="${choice}">
+                ${String.fromCharCode(65 + index)}. ${choice}
+            </div>
+        `).join('');
+    }
     
     // Start question timer
     startQuestionTimer(question.timeLimit || 20);
     
     // Clear previous answers
-    document.getElementById('answers-grid').innerHTML = '';
+    const answersGrid = document.getElementById('answers-grid');
+    if (answersGrid) {
+        answersGrid.innerHTML = '';
+    }
     
     // Enable next question button after timer
-    document.getElementById('next-question-btn').disabled = true;
-    setTimeout(() => {
-        document.getElementById('next-question-btn').disabled = false;
-    }, (question.timeLimit || 20) * 1000);
+    const nextQuestionBtn = document.getElementById('next-question-btn');
+    if (nextQuestionBtn) {
+        nextQuestionBtn.disabled = true;
+        setTimeout(() => {
+            nextQuestionBtn.disabled = false;
+        }, (question.timeLimit || 20) * 1000);
+    }
 }
 
 function startQuestionTimer(timeLimit) {
@@ -207,19 +270,35 @@ function startQuestionTimer(timeLimit) {
 }
 
 function showCorrectAnswer() {
-    const question = questions[gameState.currentQuestionIndex];
-    const choices = document.querySelectorAll('.choice-item');
+    const currentQuestions = gameState.isCustomGame ? gameState.customQuestions : questions;
+    const question = currentQuestions[gameState.currentQuestionIndex];
     
-    choices.forEach(choice => {
-        if (choice.dataset.choice === question.answer) {
-            choice.classList.add('correct');
-        }
-    });
+    if (question.type === 'true-false') {
+        const choices = document.querySelectorAll('.true-false-choice');
+        choices.forEach(choice => {
+            if (choice.dataset.choice === question.correctAnswer.toString()) {
+                choice.classList.add('correct');
+            }
+        });
+    } else {
+        // Multiple choice
+        const choices = document.querySelectorAll('.choice-item');
+        choices.forEach(choice => {
+            const correctAnswer = typeof question.correctAnswer === 'number' 
+                ? question.choices[question.correctAnswer] 
+                : question.answer;
+            
+            if (choice.dataset.choice === correctAnswer) {
+                choice.classList.add('correct');
+            }
+        });
+    }
 }
 
 function updateAnswersSummary(players) {
     const answersContainer = document.getElementById('answers-grid');
-    const currentQuestion = questions[gameState.currentQuestionIndex];
+    const currentQuestions = gameState.isCustomGame ? gameState.customQuestions : questions;
+    const currentQuestion = currentQuestions[gameState.currentQuestionIndex];
     
     if (!currentQuestion) return;
     
@@ -229,7 +308,17 @@ function updateAnswersSummary(players) {
         let statusText = 'لم يجب';
         
         if (answer) {
-            if (answer.answer === currentQuestion.answer) {
+            // Get correct answer based on question type
+            let correctAnswer;
+            if (currentQuestion.type === 'true-false') {
+                correctAnswer = currentQuestion.correctAnswer;
+            } else {
+                correctAnswer = typeof currentQuestion.correctAnswer === 'number' 
+                    ? currentQuestion.choices[currentQuestion.correctAnswer] 
+                    : currentQuestion.answer;
+            }
+            
+            if (answer.answer === correctAnswer || answer.answer === correctAnswer.toString()) {
                 statusClass = 'correct';
                 statusText = 'صحيح';
             } else {
@@ -345,6 +434,12 @@ function handlePlayerGameStateChange(snapshot) {
         return;
     }
     
+    // Check if it's a custom game
+    if (game.gameType === 'custom' && game.customQuestions) {
+        gameState.isCustomGame = true;
+        gameState.customQuestions = game.customQuestions;
+    }
+    
     if (game.status === 'waiting') {
         showWaitingScreen();
     } else if (game.status === 'active') {
@@ -378,9 +473,12 @@ function showWaitingScreen() {
 }
 
 function showQuestionScreen(questionIndex) {
-    if (questionIndex >= questions.length) return;
+    // Determine which questions to use
+    const currentQuestions = gameState.isCustomGame ? gameState.customQuestions : questions;
     
-    const question = questions[questionIndex];
+    if (questionIndex >= currentQuestions.length) return;
+    
+    const question = currentQuestions[questionIndex];
     gameState.currentQuestionIndex = questionIndex;
     gameState.selectedAnswer = null;
     gameState.questionStartTime = Date.now();
@@ -390,23 +488,70 @@ function showQuestionScreen(questionIndex) {
     
     // Update question display
     document.getElementById('current-q-num').textContent = questionIndex + 1;
-    document.getElementById('total-q-num').textContent = getTotalQuestions();
+    document.getElementById('total-q-num').textContent = currentQuestions.length;
     document.getElementById('question-text').textContent = question.question;
-    document.getElementById('question-difficulty').textContent = getDifficultyText(question.difficulty);
     
-    // Display choices
+    // Display difficulty if it exists (for default questions)
+    const difficultyElement = document.getElementById('question-difficulty');
+    if (difficultyElement) {
+        if (question.difficulty) {
+            difficultyElement.textContent = getDifficultyText(question.difficulty);
+            difficultyElement.style.display = 'block';
+        } else {
+            difficultyElement.style.display = 'none';
+        }
+    }
+    
+    // Display image if exists
+    const questionImageContainer = document.getElementById('question-image-player');
+    if (question.image) {
+        if (!questionImageContainer) {
+            // Create image container if it doesn't exist
+            const imageDiv = document.createElement('div');
+            imageDiv.id = 'question-image-player';
+            imageDiv.style.textAlign = 'center';
+            imageDiv.style.marginBottom = '1rem';
+            document.getElementById('question-text').parentNode.insertBefore(imageDiv, document.getElementById('question-text').nextSibling);
+        }
+        document.getElementById('question-image-player').innerHTML = `<img src="${question.image}" alt="صورة السؤال" style="max-width: 100%; max-height: 250px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">`;
+    } else if (questionImageContainer) {
+        questionImageContainer.innerHTML = '';
+    }
+    
+    // Display choices based on question type
     const choicesContainer = document.getElementById('choices-container');
-    choicesContainer.innerHTML = question.choices.map((choice, index) => `
-        <button class="choice-btn" data-choice="${choice}" onclick="selectChoice('${choice}')">
-            ${String.fromCharCode(65 + index)}. ${choice}
-        </button>
-    `).join('');
+    
+    if (question.type === 'true-false') {
+        choicesContainer.innerHTML = `
+            <div class="true-false-choices">
+                <div class="true-false-choice" data-choice="true" onclick="selectTrueFalseChoice(true)">
+                    <i class="fas fa-check"></i>
+                    صحيح
+                </div>
+                <div class="true-false-choice" data-choice="false" onclick="selectTrueFalseChoice(false)">
+                    <i class="fas fa-times"></i>
+                    خطأ
+                </div>
+            </div>
+        `;
+    } else {
+        // Multiple choice or default
+        const choices = question.choices || [];
+        choicesContainer.innerHTML = choices.map((choice, index) => `
+            <button class="choice-btn" data-choice="${choice}" onclick="selectChoice('${choice}')">
+                ${String.fromCharCode(65 + index)}. ${choice}
+            </button>
+        `).join('');
+    }
     
     // Start timer
     startPlayerQuestionTimer(question.timeLimit || 20);
     
     // Reset submit button
-    document.getElementById('submit-answer-btn').disabled = true;
+    const submitBtn = document.getElementById('submit-answer-btn');
+    if (submitBtn) {
+        submitBtn.disabled = true;
+    }
 }
 
 function getDifficultyText(difficulty) {
@@ -528,8 +673,7 @@ function hideAllScreens() {
     });
 }
 
-function setupPlayerGlobalFunctions() {
-    // Select choice function
+function setupPlayerGlobalFunctions() {    // Select choice function
     window.selectChoice = function(choice) {
         gameState.selectedAnswer = choice;
         
@@ -539,7 +683,26 @@ function setupPlayerGlobalFunctions() {
         });
         
         document.querySelector(`[data-choice="${choice}"]`).classList.add('selected');
-        document.getElementById('submit-answer-btn').disabled = false;
+        const submitBtn = document.getElementById('submit-answer-btn');
+        if (submitBtn) {
+            submitBtn.disabled = false;
+        }
+    };
+
+    // Select true/false choice function
+    window.selectTrueFalseChoice = function(choice) {
+        gameState.selectedAnswer = choice;
+        
+        // Update UI
+        document.querySelectorAll('.true-false-choice').forEach(btn => {
+            btn.classList.remove('selected');
+        });
+        
+        document.querySelector(`[data-choice="${choice}"]`).classList.add('selected');
+        const submitBtn = document.getElementById('submit-answer-btn');
+        if (submitBtn) {
+            submitBtn.disabled = false;
+        }
     };
     
     // Submit answer function
@@ -644,7 +807,8 @@ function createSingleFirework(container) {
 
 // Enhanced scoring with speed bonus
 async function submitCurrentAnswer() {
-    const question = questions[gameState.currentQuestionIndex];
+    const currentQuestions = gameState.isCustomGame ? gameState.customQuestions : questions;
+    const question = currentQuestions[gameState.currentQuestionIndex];
     const timeToAnswer = Date.now() - gameState.questionStartTime;
     const answer = gameState.selectedAnswer || '';
     
@@ -659,7 +823,16 @@ async function submitCurrentAnswer() {
         );
         
         // Calculate score with enhanced speed bonus
-        const isCorrect = answer === question.answer;
+        let correctAnswer;
+        if (question.type === 'true-false') {
+            correctAnswer = question.correctAnswer;
+        } else {
+            correctAnswer = typeof question.correctAnswer === 'number' 
+                ? question.choices[question.correctAnswer] 
+                : question.answer;
+        }
+        
+        const isCorrect = answer === correctAnswer || answer === correctAnswer.toString();
         let pointsEarned = 0;
         
         if (isCorrect) {
@@ -679,7 +852,7 @@ async function submitCurrentAnswer() {
         }
         
         // Show result screen
-        showResultScreen(isCorrect, question.answer, pointsEarned);
+        showResultScreen(isCorrect, correctAnswer, pointsEarned);
         
     } catch (error) {
         console.error('Error submitting answer:', error);

@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>إنشاء مسابقة مخصصة - أمان المعلومات</title>
+    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    
+    <style>
+        :root {
+            --primary-color: #2563eb;
+            --secondary-color: #dc2626;
+            --success-color: #059669;
+            --warning-color: #d97706;
+            --gray-50: #f9fafb;
+            --gray-100: #f3f4f6;
+            --gray-200: #e5e7eb;
+            --gray-300: #d1d5db;
+            --gray-400: #9ca3af;
+            --gray-500: #6b7280;
+            --gray-600: #4b5563;
+            --gray-700: #374151;
+            --gray-800: #1f2937;
+            --gray-900: #111827;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            height: 100%;
+            font-family: 'Tajawal', system-ui, -apple-system, sans-serif;
+            background: var(--gray-50);
+            color: var(--gray-900);
+            line-height: 1.6;
+        }
+
+        .container {
+            min-height: 100vh;
+            padding: 2rem;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        /* Header */
+        .header {
+            background: white;
+            padding: 1.5rem 2rem;
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+            border: 1px solid var(--gray-200);
+            border-radius: 12px;
+            margin-bottom: 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .authority-logo {
+            width: 56px;
+            height: 56px;
+            border-radius: 8px;
+            object-fit: cover;
+            border: 1px solid var(--gray-200);
+        }
+
+        .header-text h1 {
+            color: var(--gray-900);
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 0.25rem;
+        }
+
+        .header-text h2 {
+            color: var(--primary-color);
+            font-size: 1rem;
+            font-weight: 600;
+        }
+
+        /* Cards */
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 2rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            border: 1px solid var(--gray-200);
+            margin-bottom: 2rem;
+        }
+
+        .card-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--gray-900);
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        /* Form Elements */
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+            color: var(--gray-700);
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid var(--gray-300);
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: border-color 0.2s;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+
+        .form-textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        .form-select {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid var(--gray-300);
+            border-radius: 8px;
+            font-size: 1rem;
+            background: white;
+            cursor: pointer;
+        }
+
+        /* Question Builder */
+        .question-builder {
+            border: 2px dashed var(--gray-300);
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            background: var(--gray-50);
+        }
+
+        .question-item {
+            background: white;
+            border: 1px solid var(--gray-200);
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            position: relative;
+        }
+
+        .question-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .question-number {
+            background: var(--primary-color);
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+        }
+
+        .question-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .btn-icon {
+            background: none;
+            border: none;
+            padding: 0.5rem;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .btn-icon:hover {
+            background: var(--gray-100);
+        }
+
+        .btn-icon.danger:hover {
+            background: var(--secondary-color);
+            color: white;
+        }
+
+        /* Answer Options */
+        .answer-options {
+            margin-top: 1rem;
+        }
+
+        .answer-option {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 0.5rem;
+            padding: 0.5rem;
+            background: var(--gray-50);
+            border-radius: 6px;
+        }
+
+        .answer-option input[type="radio"] {
+            margin: 0;
+        }
+
+        .answer-option input[type="text"] {
+            flex: 1;
+            border: 1px solid var(--gray-300);
+            border-radius: 4px;
+            padding: 0.5rem;
+        }
+
+        /* True/False Questions */
+        .true-false-options {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+
+        .true-false-option {
+            flex: 1;
+            padding: 1rem;
+            border: 2px solid var(--gray-300);
+            border-radius: 8px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .true-false-option:hover {
+            border-color: var(--primary-color);
+        }
+
+        .true-false-option.selected {
+            border-color: var(--primary-color);
+            background: rgba(37, 99, 235, 0.1);
+        }
+
+        .true-false-option.correct {
+            background: rgba(5, 150, 105, 0.1);
+            border-color: var(--success-color);
+        }
+
+        /* Image Upload */
+        .image-upload {
+            border: 2px dashed var(--gray-300);
+            border-radius: 8px;
+            padding: 2rem;
+            text-align: center;
+            cursor: pointer;
+            transition: border-color 0.2s;
+            margin-top: 1rem;
+        }
+
+        .image-upload:hover {
+            border-color: var(--primary-color);
+        }
+
+        .image-upload.has-image {
+            border-style: solid;
+            border-color: var(--success-color);
+        }
+
+        .image-preview {
+            max-width: 300px;
+            max-height: 200px;
+            border-radius: 8px;
+            margin: 1rem 0;
+        }
+
+        /* Buttons */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-decoration: none;
+        }
+
+        .btn-primary {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #1d4ed8;
+        }
+
+        .btn-secondary {
+            background: var(--gray-200);
+            color: var(--gray-700);
+        }
+
+        .btn-secondary:hover {
+            background: var(--gray-300);
+        }
+
+        .btn-success {
+            background: var(--success-color);
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #047857;
+        }
+
+        .btn-danger {
+            background: var(--secondary-color);
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #b91c1c;
+        }
+
+        .btn-large {
+            padding: 1rem 2rem;
+            font-size: 1.125rem;
+        }
+
+        /* Utilities */
+        .hidden {
+            display: none !important;
+        }
+
+        .text-center {
+            text-align: center;
+        }
+
+        .mt-2 {
+            margin-top: 2rem;
+        }
+
+        .mb-2 {
+            margin-bottom: 2rem;
+        }
+
+        .loading {
+            opacity: 0.6;
+            pointer-events: none;
+        }
+
+        /* Notifications */
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 1rem 1.5rem;
+            border-radius: 8px;
+            color: white;
+            font-weight: 600;
+            z-index: 1000;
+            animation: slideIn 0.3s ease;
+        }
+
+        .notification.success {
+            background: var(--success-color);
+        }
+
+        .notification.error {
+            background: var(--secondary-color);
+        }
+
+        .notification.warning {
+            background: var(--warning-color);
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }        /* Responsive */
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+            
+            .header {
+                flex-direction: column;
+                gap: 1rem;
+                text-align: center;
+            }
+            
+            .card {
+                padding: 1.5rem;
+            }
+        }
+
+        /* Modal Styles */
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 12px;
+            padding: 2rem;
+            max-width: 400px;
+            width: 90%;
+            text-align: center;
+        }
+
+        .modal-content h3 {
+            margin-bottom: 2rem;
+            color: var(--gray-900);
+        }
+
+        .question-type-options {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .question-type-btn {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem;
+            border: 2px solid var(--gray-300);
+            border-radius: 8px;
+            background: white;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 1rem;
+        }
+
+        .question-type-btn:hover {
+            border-color: var(--primary-color);
+            background: rgba(37, 99, 235, 0.05);
+        }
+
+        .question-type-btn i {
+            font-size: 1.5rem;
+            color: var(--primary-color);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div class="logo">
+                <img src="logo.png" alt="شعار الهيئة" class="authority-logo">
+                <div class="header-text">
+                    <h1>الهيئة الوطنية للأمن السيبراني</h1>
+                    <h2>إنشاء مسابقة مخصصة</h2>
+                </div>
+            </div>
+            <div class="header-actions">
+                <a href="index.html" class="btn btn-secondary">
+                    <i class="fas fa-arrow-right"></i>
+                    العودة للرئيسية
+                </a>
+            </div>
+        </div>
+
+        <!-- Game Settings -->
+        <div class="card">
+            <h2 class="card-title">
+                <i class="fas fa-cog"></i>
+                إعدادات المسابقة
+            </h2>
+            
+            <div class="form-group">
+                <label class="form-label">اسم المقدم</label>
+                <input type="text" id="host-name" class="form-input" placeholder="أدخل اسمك" required>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">عنوان المسابقة</label>
+                <input type="text" id="game-title" class="form-input" placeholder="أدخل عنوان المسابقة" required>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">وصف المسابقة</label>
+                <textarea id="game-description" class="form-input form-textarea" placeholder="أدخل وصف المسابقة (اختياري)"></textarea>
+            </div>
+        </div>
+
+        <!-- Questions Builder -->
+        <div class="card">
+            <h2 class="card-title">
+                <i class="fas fa-question-circle"></i>
+                بناء الأسئلة
+            </h2>
+            
+            <div class="question-builder">
+                <div id="questions-container">
+                    <!-- Questions will be added here dynamically -->
+                </div>
+                
+                <div class="text-center">
+                    <button id="add-question-btn" class="btn btn-primary">
+                        <i class="fas fa-plus"></i>
+                        إضافة سؤال جديد
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Create Game Button -->
+        <div class="card text-center">
+            <button id="create-game-btn" class="btn btn-success btn-large">
+                <i class="fas fa-play"></i>
+                إنشاء المسابقة
+            </button>
+        </div>
+    </div>
+
+    <!-- Question Type Modal -->
+    <div id="question-type-modal" class="modal hidden">
+        <div class="modal-content">
+            <h3>اختر نوع السؤال</h3>
+            <div class="question-type-options">
+                <button class="question-type-btn" data-type="multiple-choice">
+                    <i class="fas fa-list-ul"></i>
+                    اختيار متعدد
+                </button>
+                <button class="question-type-btn" data-type="true-false">
+                    <i class="fas fa-check-circle"></i>
+                    صح أم خطأ
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="create-game.js"></script>
+</body>
+</html>

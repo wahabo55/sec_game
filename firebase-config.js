@@ -1,9 +1,16 @@
 // Firebase configuration and database functions
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js';
 import { getDatabase, ref, set, push, onValue, off, remove } from 'https://www.gstatic.com/firebasejs/10.7.0/firebase-database.js';
-import { getAuth, signInAnonymously } from 'https://www.gstatic.com/firebasejs/10.7.0/firebase-auth.js';
+import { 
+  getAuth, 
+  signInAnonymously, 
+  signInWithEmailAndPassword, 
+  signOut, 
+  onAuthStateChanged 
+} from 'https://www.gstatic.com/firebasejs/10.7.0/firebase-auth.js';
+import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.7.0/firebase-storage.js';
 
-// TODO: Replace with your Firebase config
+// Firebase configuration
 const firebaseConfig = {
   apiKey: "AIzaSyCFg8EsWtQFXooEut6KkicPFmJy94a1kgU",
   authDomain: "pam-se.firebaseapp.com",
@@ -18,6 +25,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const database = getDatabase(app);
 const auth = getAuth(app);
+const storage = getStorage(app);
 
 // Authenticate anonymously before any database operations
 async function ensureAuth() {
@@ -208,4 +216,103 @@ export function getLeaderboard(gameCode, callback) {
       callback(leaderboard);
     }
   });
+}
+
+// Create a new custom game session with custom questions
+export async function createCustomGame(hostName, customQuestions) {
+  try {
+    await ensureAuth();
+    const gameCode = generateGameCode();
+    const gameRef = ref(database, `games/${gameCode}`);
+    
+    const gameData = {
+      hostName,
+      gameCode,
+      status: 'waiting', // waiting, active, finished
+      currentQuestion: 0,
+      players: {},
+      createdAt: Date.now(),
+      startTime: null,
+      gameType: 'custom',
+      customQuestions: customQuestions || []
+    };
+
+    await set(gameRef, gameData);
+    return gameCode;
+  } catch (error) {
+    console.error('Error creating custom game:', error);
+    throw error;
+  }
+}
+
+// Upload image to Firebase Storage
+export async function uploadQuestionImage(file, gameCode, questionIndex) {
+  try {
+    await ensureAuth();
+    const fileName = `games/${gameCode}/questions/${questionIndex}_${Date.now()}.${file.name.split('.').pop()}`;
+    const imageRef = storageRef(storage, fileName);
+    
+    const snapshot = await uploadBytes(imageRef, file);
+    const downloadURL = await getDownloadURL(snapshot.ref);
+    
+    return downloadURL;
+  } catch (error) {
+    console.error('Error uploading image:', error);
+    throw error;
+  }
+}
+
+// Save custom questions to database
+export async function saveCustomQuestions(gameCode, questions) {
+  try {
+    await ensureAuth();
+    const questionsRef = ref(database, `games/${gameCode}/customQuestions`);
+    await set(questionsRef, questions);
+  } catch (error) {
+    console.error('Error saving custom questions:', error);
+    throw error;
+  }
+}
+
+// Get custom questions from database
+export async function getCustomQuestions(gameCode, callback) {
+  try {
+    const questionsRef = ref(database, `games/${gameCode}/customQuestions`);
+    onValue(questionsRef, callback);
+  } catch (error) {
+    console.error('Error getting custom questions:', error);
+    throw error;
+  }
+}
+
+// Authentication functions
+export async function signInWithEmail(email, password) {
+  try {
+    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    return userCredential.user;
+  } catch (error) {
+    console.error('Error signing in:', error);
+    throw error;
+  }
+}
+
+export async function signOutUser() {
+  try {
+    await signOut(auth);
+  } catch (error) {
+    console.error('Error signing out:', error);
+    throw error;
+  }
+}
+
+export function onAuthStateChange(callback) {
+  return onAuthStateChanged(auth, callback);
+}
+
+export function getCurrentUser() {
+  return auth.currentUser;
+}
+
+export function isUserSignedIn() {
+  return !!auth.currentUser && !auth.currentUser.isAnonymous;
 }

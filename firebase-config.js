@@ -126,11 +126,14 @@ export async function startQuiz(gameCode) {
 }
 
 // Send next question (host only)
-export async function sendNextQuestion(gameCode, questionIndex) {
+export async function sendNextQuestion(gameCode, questionIndex, timeLimit = 20) {
   try {
     const gameRef = ref(database, `games/${gameCode}`);
+    const questionStartTime = Date.now();
     await set(ref(database, `games/${gameCode}/currentQuestion`), questionIndex);
-    await set(ref(database, `games/${gameCode}/questionStartTime`), Date.now());
+    await set(ref(database, `games/${gameCode}/questionStartTime`), questionStartTime);
+    await set(ref(database, `games/${gameCode}/questionTimeLimit`), timeLimit);
+    await set(ref(database, `games/${gameCode}/questionEndTime`), questionStartTime + (timeLimit * 1000));
   } catch (error) {
     console.error('Error sending question:', error);
     throw error;

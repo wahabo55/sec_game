@@ -225,8 +225,8 @@ function displayCurrentQuestion(questionIndex) {
         `).join('');
     }
     
-    // Start question timer
-    startQuestionTimer(question.timeLimit || 20);
+    // Start question timer with host-controlled timing
+    startHostControlledTimer(question.timeLimit || 20);
     
     // Clear previous answers
     const answersGrid = document.getElementById('answers-grid');
@@ -238,11 +238,11 @@ function displayCurrentQuestion(questionIndex) {
     const nextQuestionBtn = document.getElementById('next-question-btn');
     if (nextQuestionBtn) {
         nextQuestionBtn.disabled = true;
-        nextQuestionBtn.textContent = 'في انتظار إجابة جميع اللاعبين...';
+        nextQuestionBtn.textContent = 'جاري السؤال...';
     }
     
-    // Start checking if all players answered
-    startCheckingPlayersAnswered();
+    // Start checking if all players answered or time expired
+    startHostQuestionMonitoring(question.timeLimit || 20);
 }
 
 function startQuestionTimer(timeLimit) {
@@ -274,6 +274,120 @@ function startQuestionTimer(timeLimit) {
     }, 1000);
 }
 
+// Host-controlled timer that syncs with Firebase
+function startHostControlledTimer(timeLimit) {
+    let timeLeft = timeLimit;
+    const timerElement = document.getElementById('timer');
+    
+    if (gameState.timerInterval) {
+        clearInterval(gameState.timerInterval);
+    }
+    
+    // Set the question start time and end time in Firebase
+    const questionStartTime = Date.now();
+    const questionEndTime = questionStartTime + (timeLimit * 1000);
+    
+    gameState.timerInterval = setInterval(() => {
+        timerElement.textContent = timeLeft;
+        
+        if (timeLeft <= 5) {
+            timerElement.style.color = '#dc3545';
+            timerElement.style.animation = 'pulse 0.5s infinite';
+        }
+        
+        if (timeLeft <= 0) {
+            clearInterval(gameState.timerInterval);
+            timerElement.style.animation = 'none';
+            timerElement.style.color = 'inherit';
+            
+            // Show correct answer
+            showCorrectAnswer();
+        }
+        
+        timeLeft--;
+    }, 1000);
+}
+
+// Synchronized timer that matches host timing exactly
+function startSyncedTimer(questionStartTime, questionEndTime) {
+    const timerElement = document.getElementById('question-timer');
+    
+    if (gameState.timerInterval) {
+        clearInterval(gameState.timerInterval);
+    }
+    
+    const updateTimer = () => {
+        const currentTime = Date.now();
+        const timeLeft = Math.max(0, Math.ceil((questionEndTime - currentTime) / 1000));
+        
+        timerElement.textContent = timeLeft;
+        
+        // Visual effects for low time
+        if (timeLeft <= 5) {
+            timerElement.style.color = '#dc3545';
+            timerElement.style.animation = 'pulse 0.5s infinite';
+        } else {
+            timerElement.style.color = 'inherit';
+            timerElement.style.animation = 'none';
+        }
+        
+        // Auto-submit when time runs out
+        if (timeLeft <= 0) {
+            clearInterval(gameState.timerInterval);
+            timerElement.style.animation = 'none';
+            timerElement.style.color = 'inherit';
+            
+            // Auto submit if no answer selected and player hasn't answered yet
+            if (!gameState.selectedAnswer && !gameState.hasAnsweredCurrentQuestion) {
+                submitCurrentAnswer();
+            }
+        }
+    };
+    
+    // Update immediately
+    updateTimer();
+    
+    // Update every second
+    gameState.timerInterval = setInterval(updateTimer, 1000);
+}
+
+// Monitor question status (all players answered OR time expired)
+function startHostQuestionMonitoring(timeLimit) {
+    // Clear any existing intervals
+    if (gameState.playersCheckInterval) {
+        clearInterval(gameState.playersCheckInterval);
+    }
+    
+    const questionStartTime = Date.now();
+    const questionEndTime = questionStartTime + (timeLimit * 1000);
+    
+    gameState.playersCheckInterval = setInterval(async () => {
+        try {
+            const currentTime = Date.now();
+            const timeExpired = currentTime >= questionEndTime;
+            const allAnswered = await checkAllPlayersAnswered(gameState.gameCode, gameState.currentQuestionIndex);
+            const nextQuestionBtn = document.getElementById('next-question-btn');
+            
+            if (nextQuestionBtn) {
+                if (allAnswered) {
+                    nextQuestionBtn.disabled = false;
+                    nextQuestionBtn.textContent = 'السؤال التالي';
+                    clearInterval(gameState.playersCheckInterval);
+                } else if (timeExpired) {
+                    nextQuestionBtn.disabled = false;
+                    nextQuestionBtn.textContent = 'السؤال التالي (انتهى الوقت)';
+                    clearInterval(gameState.playersCheckInterval);
+                } else {
+                    const timeLeft = Math.ceil((questionEndTime - currentTime) / 1000);
+                    nextQuestionBtn.textContent = `في انتظار اللاعبين... (${timeLeft}s)`;
+                }
+            }
+        } catch (error) {
+            console.error('Error monitoring question:', error);
+        }
+    }, 1000); // Check every second
+}
+
 function showCorrectAnswer() {
     const currentQuestions = gameState.isCustomGame ? gameState.customQuestions : questions;
     const question = currentQuestions[gameState.currentQuestionIndex];
@@ -298,36 +412,6 @@ function showCorrectAnswer() {
             }
         });
     }
-    
-    // Enable next question button after timer ends
-    const nextQuestionBtn = document.getElementById('next-question-btn');
-    if (nextQuestionBtn) {
-        nextQuestionBtn.disabled = false;
-        nextQuestionBtn.textContent = 'السؤال التالي';
-    }
-}
-
-// Check if all players have answered the current question
-function startCheckingPlayersAnswered() {
-    // Clear any existing interval
-    if (gameState.playersCheckInterval) {
-        clearInterval(gameState.playersCheckInterval);
-    }
-    
-    gameState.playersCheckInterval = setInterval(async () => {
-        try {
-            const allAnswered = await checkAllPlayersAnswered(gameState.gameCode, gameState.currentQuestionIndex);
-            const nextQuestionBtn = document.getElementById('next-question-btn');
-            
-            if (allAnswered && nextQuestionBtn) {
-                nextQuestionBtn.disabled = false;
-                nextQuestionBtn.textContent = 'السؤال التالي';
-                clearInterval(gameState.playersCheckInterval);
-            }
-        } catch (error) {
-            console.error('Error checking players answered:', error);
-        }
-    }, 1000); // Check every second
 }
 
 function updateAnswersSummary(players) {
@@ -375,13 +459,18 @@ function setupHostGlobalFunctions() {    // Start game function
     window.startGame = async function() {
         try {
             await startQuiz(gameState.gameCode);
-            await sendNextQuestion(gameState.gameCode, 0);
+            
+            // Get the first question to determine time limit
+            const currentQuestions = gameState.isCustomGame ? gameState.customQuestions : questions;
+            const firstQuestion = currentQuestions[0];
+            const timeLimit = firstQuestion ? (firstQuestion.timeLimit || 20) : 20;
+            
+            await sendNextQuestion(gameState.gameCode, 0, timeLimit);
             showNotification('تم بدء المسابقة بنجاح');
         } catch (error) {
             showNotification('فشل في بدء المسابقة: ' + error.message, 'error');
         }
-    };
-      // Next question function
+    };// Next question function
     window.nextQuestion = async function() {
         const currentQuestions = gameState.isCustomGame ? gameState.customQuestions : questions;
         const nextIndex = gameState.currentQuestionIndex + 1;
@@ -397,8 +486,12 @@ function setupHostGlobalFunctions() {    // Start game function
             // Clear player answer statuses for the new question
             await clearPlayersAnswerStatus(gameState.gameCode);
             
-            // Send next question
-            await sendNextQuestion(gameState.gameCode, nextIndex);
+            // Get the time limit for the next question
+            const nextQuestion = currentQuestions[nextIndex];
+            const timeLimit = nextQuestion.timeLimit || 20;
+            
+            // Send next question with time limit
+            await sendNextQuestion(gameState.gameCode, nextIndex, timeLimit);
             
             // Clear the checking interval
             if (gameState.playersCheckInterval) {
@@ -498,11 +591,16 @@ function handlePlayerGameStateChange(snapshot) {
                 gameState.currentQuestionIndex = currentQuestionIndex;
             }
             
+            // Get timer information from host
+            const questionStartTime = game.questionStartTime;
+            const questionTimeLimit = game.questionTimeLimit || 20;
+            const questionEndTime = game.questionEndTime;
+            
             // Show appropriate screen based on answer status
             if (gameState.hasAnsweredCurrentQuestion) {
                 showWaitingForNextScreen();
             } else {
-                showQuestionScreen(currentQuestionIndex);
+                showQuestionScreen(currentQuestionIndex, questionStartTime, questionTimeLimit, questionEndTime);
             }
         }
     } else if (game.status === 'finished') {
@@ -575,7 +673,7 @@ function showWaitingForNextScreen() {
     waitingNextScreen.classList.remove('hidden');
 }
 
-function showQuestionScreen(questionIndex) {
+function showQuestionScreen(questionIndex, questionStartTime = null, questionTimeLimit = 20, questionEndTime = null) {
     // Determine which questions to use
     const currentQuestions = gameState.isCustomGame ? gameState.customQuestions : questions;
     
@@ -658,8 +756,12 @@ function showQuestionScreen(questionIndex) {
         `).join('');
     }
     
-    // Start timer
-    startPlayerQuestionTimer(question.timeLimit || 20);
+    // Start timer - sync with host if timing data is available
+    if (questionStartTime && questionEndTime) {
+        startSyncedTimer(questionStartTime, questionEndTime);
+    } else {
+        startPlayerQuestionTimer(questionTimeLimit);
+    }
     
     // Reset submit button
     const submitBtn = document.getElementById('submit-answer-btn');
@@ -698,8 +800,8 @@ function startPlayerQuestionTimer(timeLimit) {
             timerElement.style.animation = 'none';
             timerElement.style.color = 'inherit';
             
-            // Auto submit if no answer selected
-            if (!gameState.selectedAnswer) {
+            // Auto submit if no answer selected and player hasn't answered yet
+            if (!gameState.selectedAnswer && !gameState.hasAnsweredCurrentQuestion) {
                 submitCurrentAnswer();
             }
         }

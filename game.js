@@ -28,7 +28,9 @@ let gameState = {
     timerInterval: null,
     isWinner: false,
     customQuestions: [],
-    isCustomGame: false
+    isCustomGame: false,
+    hasAnsweredCurrentQuestion: false,
+    answeredQuestions: new Set() // Track which questions the player has answered
 };
 
 // Sound effects (optional)
@@ -444,7 +446,16 @@ function handlePlayerGameStateChange(snapshot) {
         showWaitingScreen();
     } else if (game.status === 'active') {
         if (game.currentQuestion !== undefined) {
-            showQuestionScreen(game.currentQuestion);
+            // Check if this is a new question or if player hasn't answered yet
+            if (game.currentQuestion !== gameState.currentQuestionIndex || 
+                !gameState.answeredQuestions.has(game.currentQuestion)) {
+                gameState.currentQuestionIndex = game.currentQuestion;
+                gameState.hasAnsweredCurrentQuestion = false;
+                showQuestionScreen(game.currentQuestion);
+            } else if (gameState.hasAnsweredCurrentQuestion) {
+                // Player has already answered this question, show waiting screen
+                showWaitingForNextScreen();
+            }
         }
     } else if (game.status === 'finished') {
         showFinalResultsScreen();
@@ -472,6 +483,45 @@ function showWaitingScreen() {
     document.getElementById('waiting-screen').classList.remove('hidden');
 }
 
+function showWaitingForNextScreen() {
+    hideAllScreens();
+    
+    // Create or show a waiting screen for next question
+    let waitingNextScreen = document.getElementById('waiting-next-screen');
+    if (!waitingNextScreen) {
+        // Create the waiting screen if it doesn't exist
+        waitingNextScreen = document.createElement('div');
+        waitingNextScreen.id = 'waiting-next-screen';
+        waitingNextScreen.className = 'screen hidden';
+        waitingNextScreen.innerHTML = `
+            <div class="waiting-container">
+                <div class="waiting-content">
+                    <div class="spinner">
+                        <div class="bounce1"></div>
+                        <div class="bounce2"></div>
+                        <div class="bounce3"></div>
+                    </div>
+                    <h2>تم إرسال إجابتك بنجاح!</h2>
+                    <p>في انتظار السؤال التالي...</p>
+                    <div class="current-score">
+                        <span>النقاط الحالية: </span>
+                        <span class="score-value">${gameState.playerScore}</span>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(waitingNextScreen);
+    } else {
+        // Update the score in existing screen
+        const scoreElement = waitingNextScreen.querySelector('.score-value');
+        if (scoreElement) {
+            scoreElement.textContent = gameState.playerScore;
+        }
+    }
+    
+    waitingNextScreen.classList.remove('hidden');
+}
+
 function showQuestionScreen(questionIndex) {
     // Determine which questions to use
     const currentQuestions = gameState.isCustomGame ? gameState.customQuestions : questions;
@@ -482,6 +532,7 @@ function showQuestionScreen(questionIndex) {
     gameState.currentQuestionIndex = questionIndex;
     gameState.selectedAnswer = null;
     gameState.questionStartTime = Date.now();
+    gameState.hasAnsweredCurrentQuestion = false; // Reset answered state for new question
     
     hideAllScreens();
     document.getElementById('question-screen').classList.remove('hidden');
@@ -660,6 +711,7 @@ function showDisconnectedScreen() {
 function hideAllScreens() {
     const screens = [
         'waiting-screen',
+        'waiting-next-screen',
         'question-screen', 
         'result-screen',
         'winner-screen',
@@ -822,6 +874,10 @@ async function submitCurrentAnswer() {
             timeToAnswer
         );
         
+        // Mark this question as answered
+        gameState.hasAnsweredCurrentQuestion = true;
+        gameState.answeredQuestions.add(gameState.currentQuestionIndex);
+        
         // Calculate score with enhanced speed bonus
         let correctAnswer;
         if (question.type === 'true-false') {
@@ -851,8 +907,13 @@ async function submitCurrentAnswer() {
             await updatePlayerScore(gameState.gameCode, gameState.playerName, gameState.playerScore);
         }
         
-        // Show result screen
+        // Show result screen briefly, then switch to waiting screen
         showResultScreen(isCorrect, correctAnswer, pointsEarned);
+        
+        // After showing result for 3 seconds, show waiting screen
+        setTimeout(() => {
+            showWaitingForNextScreen();
+        }, 3000);
         
     } catch (error) {
         console.error('Error submitting answer:', error);
